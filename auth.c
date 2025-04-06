@@ -48,47 +48,5 @@ int verify_user(const char *username, const char *password)
     return 0; // Authentication failed
 }
 
-int main()
-{
-	char username[50] , password[50];
-	int option;
-        
-	printf("1)Login \n2)Create Account \nChoose Option: ");
-	scanf("%d",&option);
 
-	if( option == 1)
-	{
-           printf("Enter username: ");
-           scanf("%s", username);
-           printf("Enter password: ");
-           scanf("%s", password);
-            
-           if (verify_user(username, password))
-	   {
-             printf("Login successful!\n");
-           }
-	  
-	   else
-	   {
-             printf("Invalid username or password.\n");
-            }
-
-	}
-
-	else if ( option == 2)
-	{
-	   printf("Enter username: ");
-           scanf("%s", username);
-           printf("Enter password: ");
-           scanf("%s", password);
-
-           create_user(username, password);
-           printf("User Registered!\n");
-	}
-
-	else 
-	{
-		printf("Invalid Option");
-	}
-
-}
+     
