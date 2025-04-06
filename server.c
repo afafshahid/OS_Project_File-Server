@@ -1,108 +1,149 @@
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
-#include<unistd.h>
-#include<arpa/inet.h>  //ip address,and func for conversion
-#include<sys/socket.h>  //for sockets system call like socket(),bind(),listen()..
-#include<sys/types.h>   
-#include<netinet/in.h>  //struct sockaddr_in
-#include<signal.h>      //handles any kind of delay
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <pthread.h>
 
-#define PORT 2727 //port num >1024 
-#define BACKLOG 5  //max client in queue
+#include "email.h"
 
-void handle_client(int client_socket) {
-    char buffer[1024] = {0};  //to store client msgs
-    char *welcome = "MAIL SERVER AVAILABLE FOR COMMUNICATION\n";
-    send(client_socket, welcome, strlen(welcome), 0); //sends welcome msg
+#define PORT 2727
+#define BACKLOG 5
+#define MAX_USERNAME_LEN 50
+#define MAX_EMAILS 10
 
-    while(1) { //continuously reading and respond to client msg
-        memset(buffer, 0, sizeof(buffer));  //clearing buffer before reading new data
+void *handle_client(void *arg) 
+{
+    int client_socket = *(int *)arg;
+    free(arg);  // Free the dynamically allocated socket
+    char buffer[1024] = {0};
+    char username[MAX_USERNAME_LEN] = {0};
+    Email email;
+    
+    // 1. First receive the username from client
+    int bytes_read = read(client_socket, username, sizeof(username));
+    if (bytes_read <= 0) 
+    {
+        printf("Failed to receive username or client disconnected\n");
+        close(client_socket);
+        pthread_exit(NULL);
+    }
+    username[strcspn(username, "\n")] = '\0'; // Remove newline if present
+    
+    // 2. Send welcome message
+    char welcome[150];
+    snprintf(welcome, sizeof(welcome), "MAIL SERVER: Welcome %s!\n", username);
+    send(client_socket, welcome, strlen(welcome), 0);
+
+    printf("Client %s connected\n", username);
+
+    while (1) 
+    {
+	memset(buffer, 0, sizeof(buffer));
         int bytes_read = read(client_socket, buffer, sizeof(buffer));
-        if (bytes_read <= 0) {
-            printf("Client Disconnected\n");
+	if (bytes_read <= 0) 
+	{  // Check if connection closed or error
+            printf("Client disconnected\n");
             break;
         }
-        printf("Client: %s", buffer);
-        if (strncmp(buffer, "AWAZ ARHI HAI", 13) == 0) {
-            char *response = "JEE ARHI HAI\n";
-            send(client_socket, response, strlen(response), 0);
-        } 
-        else if(strncmp(buffer,"exit",4)==0){
-        printf("Shutdown command receive.Closing server..\n");
-        close(client_socket);
-        exit(0); //closing server
+
+        if (strncmp(buffer, "SEND_EMAIL", 10) == 0) 
+	{
+            // Receive email data
+            read(client_socket, &email, sizeof(Email));
+            send_email(email);  // Your function
+            write(client_socket, "EMAIL_STORED", 12);
         }
-        
-        else {
-            char *response = "HELLO AWAZ NHI ARHI\n";
-            send(client_socket, response, strlen(response), 0);
+
+        else if (strncmp(buffer, "FETCH_INBOX", 11) == 0)
+       	{
+           Email emails[MAX_EMAILS];
+           int count = fetch_emails("Inbox", emails);
+    
+           // First send count of emails
+           write(client_socket, &count, sizeof(int));
+    
+           // Then send each email
+           for (int i = 0; i < count; i++) 
+	   {
+           write(client_socket, &emails[i], sizeof(Email));
+           }            
+	}
+
+        else if (strncmp(buffer, "exit", 4) == 0) 
+	{
+            break;
+        }
            
-        }
     }
+
     close(client_socket);
+    pthread_exit(NULL);
 }
 
-void handle_signal(int sig) {
-    printf("ERROR: SERVER NOT FOUND\n");
-    exit(0);
-}
-
-int main() {
+int main() 
+{
     int server_fd;
-    int client_socket;
     struct sockaddr_in server_addr, client_addr;
     socklen_t addr_len = sizeof(client_addr);
 
-    signal(SIGINT, handle_signal);
-
-    // 1.Create Socket
+    // 1. Create server socket
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == -1) {
+    if (server_fd < 0) 
+    {
         perror("Socket creation failed");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
-    // 2.Initialize and Bind
-    server_addr.sin_family = AF_INET;   //internet protocol version4
-    server_addr.sin_addr.s_addr = INADDR_ANY;  //accepts connection from any ip(wi-fi,vpn..)
-    server_addr.sin_port = htons(PORT); //converts port num(2525) from host byte order to network byte order
+    // 2. Bind
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORT);
 
-    //bind assigns server IP address and port no to socket
-    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) 
+    {
         perror("Bind failed");
-        exit(1);
+        close(server_fd);
+        exit(EXIT_FAILURE);
     }
 
-    // 3.Listen for incoming connection
-    //marks socket as passive socket, it will wait for connection requests
-    //backlog specifies max num of pending connections
-    if (listen(server_fd, BACKLOG) < 0) {
+    // 3. Listen
+    if (listen(server_fd, BACKLOG) < 0) 
+    {
         perror("Listen failed");
-        exit(1);
+        close(server_fd);
+        exit(EXIT_FAILURE);
     }
 
-    printf("Server listening on port %d..\n", PORT);
+    printf("Server listening on port %d...\n", PORT);
 
-    // 4.Accepts and handles Multiple Clients
-    //accept waits for a client to connect, then creates new socket(client_socket) for it
-    while (1) { 
-        client_socket = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
-        if (client_socket < 0) {
+    // 4. Accept loop using threads
+    while (1) 
+    {
+        int *client_socket = malloc(sizeof(int));
+        *client_socket = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
+        if (*client_socket < 0) 
+        {
             perror("Accept failed");
+            free(client_socket);
             continue;
         }
-        printf("New client connected from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
-        // Fork creates child process for each connected client
-        // Child process handles client, while parent process waits for new clients
-        if (fork() == 0) {
-            close(server_fd); // Child doesn't need to listen for new connections
-            handle_client(client_socket);
-            exit(0);
+        printf("New connection from %s:%d\n",
+               inet_ntoa(client_addr.sin_addr),
+               ntohs(client_addr.sin_port));
+
+        pthread_t tid;
+        if (pthread_create(&tid, NULL, handle_client, client_socket) != 0) 
+        {
+            perror("Thread creation failed");
+            close(*client_socket);
+            free(client_socket);
         }
-        close(client_socket); // Parent closes socket, child handles the client
+
+        pthread_detach(tid);
     }
+
+    close(server_fd);
     return 0;
 }
-
