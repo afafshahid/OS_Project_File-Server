@@ -13,6 +13,5 @@ typedef struct {
 
 // Changed function name here
 void send_email(Email email);  // Previously store_email//
-int fetch_emails(const char *folder, Email *emails); 
-
+int fetch_emails(const char *folder, Email *emails, const char *username);
 #endif
