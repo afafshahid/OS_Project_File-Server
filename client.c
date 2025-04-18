@@ -41,26 +41,45 @@ void send_emails(int sock)
     printf("Server: %s\n", response);
 }
 
-void fetch_inbox(int sock)
+void fetch_inbox(int sock) 
 {
-    send(sock, "FETCH_INBOX", 11, 0);
+    // Send fetch command
+    if (write(sock, "FETCH_INBOX", 11) < 0) {
+        perror("Failed to send fetch command");
+        return;
+    }
 
+    // Get count of emails
     int count;
-    read(sock, &count, sizeof(int));
+    if (read(sock, &count, sizeof(int)) != sizeof(int)) {
+        perror("Failed to read email count");
+        return;
+    }
 
-    printf("\n--- Inbox (%d emails) ---\n", count);
+    if (count == 0) {
+        printf("\nYour inbox is empty.\n");
+        return;
+    }
+
+    printf("\n--- Your Inbox (%d emails) ---\n", count);
+    
+    // Receive and display each email
     for (int i = 0; i < count; i++) {
         Email email;
-        read(sock, &email, sizeof(Email));
+        ssize_t bytes_read = read(sock, &email, sizeof(Email));
+        
+        if (bytes_read != sizeof(Email)) {
+            printf("Error: Incomplete email received\n");
+            break;
+        }
 
         printf("\nEmail %d:\n", i+1);
         printf("From: %s\n", email.sender);
-        printf("To: %s\n", email.receiver);
         printf("Subject: %s\n", email.subject);
         printf("Body: %s\n", email.body);
+        printf("----------------------------");
     }
 }
-
 
 int main() 
 {
