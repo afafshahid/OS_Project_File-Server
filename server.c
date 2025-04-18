@@ -55,22 +55,31 @@ void *handle_client(void *arg)
             write(client_socket, "EMAIL_STORED", 12);
         }
 
-        else if (strncmp(buffer, "FETCH_INBOX", 11) == 0)
-       	{
+        else if (strncmp(buffer, "FETCH_INBOX", 11) == 0) 
+	{
            Email emails[MAX_EMAILS];
-           int count = fetch_emails("Inbox", emails);
+           int count = fetch_emails("Inbox", emails, username);  // Pass username
     
-           // First send count of emails
-           write(client_socket, &count, sizeof(int));
+            // Send only emails where receiver = username
+            int user_email_count = 0;
+            Email user_emails[MAX_EMAILS];
+            for (int i = 0; i < count; i++) 
+	    {
+             if (strcmp(emails[i].receiver, username) == 0) 
+	     {  // Filter
+              user_emails[user_email_count++] = emails[i];
+             }
+            }
     
-           // Then send each email
-           for (int i = 0; i < count; i++) 
+           // Send filtered emails
+           write(client_socket, &user_email_count, sizeof(int));
+           for (int i = 0; i < user_email_count; i++) 
 	   {
-           write(client_socket, &emails[i], sizeof(Email));
-           }            
-	}
-
-        else if (strncmp(buffer, "exit", 4) == 0) 
+            write(client_socket, &user_emails[i], sizeof(Email));
+           }
+        }
+        
+	else if (strncmp(buffer, "exit", 4) == 0) 
 	{
             break;
         }
