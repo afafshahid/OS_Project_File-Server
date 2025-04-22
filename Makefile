@@ -1,45 +1,42 @@
-# Compiler and flags
+# Makefile for Mail Server components
+
 CC = gcc
-CFLAGS = -Wall -Wextra -g  # Fixed typo (-Mextra → -Wextra)
-LDFLAGS = -lpthread -lssl -lcrypto
+CFLAGS = -Wall -pthread
+LDFLAGS = -lrt -pthread -lcrypto
 
-# Targets
-TARGETS = client server
+# Target executables
+all: socket_server socket_client email_writer
 
-# Client sources
-CLIENT_SRC = client.c auth.c
-CLIENT_OBJ = $(CLIENT_SRC:.c=.o)
-CLIENT_DEPS = auth.h email.h  # Added email.h
+# Using the correct source file names
+socket_server:
+	$(CC) $(CFLAGS) -o socket_server server.c email.c auth.c $(LDFLAGS)
 
-# Server sources
-SERVER_SRC = server.c email.c auth.c  # Added email.c and auth.c
-SERVER_OBJ = $(SERVER_SRC:.c=.o)
-SERVER_DEPS = email.h auth.h  # Added headers
+socket_client:
+	$(CC) $(CFLAGS) -o socket_client client.c email.c auth.c $(LDFLAGS)
 
-# Default target
-all: $(TARGETS)
+email_writer:
+	$(CC) $(CFLAGS) -o email_writer emailwriter.c email.c auth.c $(LDFLAGS)
 
-# Client build rule
-client: $(CLIENT_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
-# Server build rule
-server: $(SERVER_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
-# Pattern rule for object files
-%.o: %.c $(SERVER_DEPS) $(CLIENT_DEPS)  # Now tracks all headers
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-# Clean build artifacts
 clean:
-	rm -f $(TARGETS) *.o
+	rm -f socket_server socket_client email_writer *.o
 
-# Run targets
-run-client: client
-	./client
+# Run individual components
+run-server: socket_server
+	./socket_server
 
-run-server: server
-	./server
+run-client: socket_client
+	./socket_client
 
-.PHONY: all clean run-client run-server  # Fixed typo (.PHOW → .PHONY)
+run-writer: email_writer
+	./email_writer
+
+# Run all components in separate terminals
+run: all
+	@echo "Starting all components in separate terminals..."
+	@gnome-terminal -- bash -c "./socket_server; exec bash" &
+	@sleep 1
+	@gnome-terminal -- bash -c "./email_writer; exec bash" &
+	@sleep 1
+	@gnome-terminal -- bash -c "./socket_client; exec bash" &
+
+.PHONY: all clean run run-server run-client run-writer
