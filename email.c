@@ -83,8 +83,10 @@ void send_email(Email email) {
     printf("Email stored successfully!\n");
 }
 
-int fetch_emails(const char *folder, Email *emails, const char *username) {
+int fetch_emails(const char *folder, Email *emails, const char *username, int page, int emails_per_page) 
+{
     pthread_mutex_lock(&file_mutex);
+
     FILE *file = fopen(FILE_NAME, "r");
     if (!file) {
         pthread_mutex_unlock(&file_mutex);
@@ -94,25 +96,64 @@ int fetch_emails(const char *folder, Email *emails, const char *username) {
     EmailQueue queue;
     init_queue(&queue);
 
+    // Calculate skip count based on page number
+    int skip_count = page * emails_per_page;
+    int current_count = 0;
+    int loaded_count = 0;
+
     char line[2000];
-    while (fgets(line, sizeof(line), file) {
+    while (fgets(line, sizeof(line), file)) 
+    {
         Email email;
-        if (sscanf(line, "%99[^|]|%99[^|]|%199[^|]|%999[^|]|%49[^\n]",
-                  email.sender, email.receiver,
-                  email.subject, email.body, email.folder) == 5) {
-            if (strcmp(email.folder, folder) == 0 && 
-                strcmp(email.receiver, username) == 0) {
+        sscanf(line, "%99[^|]|%99[^|]|%199[^|]|%999[^|]|%49[^\n]",
+               email.sender, email.receiver, email.subject, email.body, email.folder);
+
+        if (strcmp(email.folder, folder) == 0 && strcmp(email.receiver, username) == 0) {
+            // Skip emails for previous pages
+            if (current_count >= skip_count && loaded_count < emails_per_page) {
                 enqueue(&queue, email);
+                loaded_count++;
             }
+            current_count++;
         }
     }
+
     fclose(file);
     pthread_mutex_unlock(&file_mutex);
 
     int count = 0;
-    while (!is_empty(&queue) && count < MAX_EMAILS) {
-        dequeue(&queue, &emails[count++]);
+    while (!is_empty(&queue) && count < emails_per_page) {
+        dequeue(&queue, &emails[count]);
+        count++;
     }
+
+    return count;
+}
+
+int get_total_email_count(const char *folder, const char *username) 
+{
+    pthread_mutex_lock(&file_mutex);
+
+    FILE *file = fopen(FILE_NAME, "r");
+    if (!file) {
+        pthread_mutex_unlock(&file_mutex);
+        return 0;
+    }
+
+    int count = 0;
+    char line[2000];
+    while (fgets(line, sizeof(line), file)) {
+        Email email;
+        sscanf(line, "%99[^|]|%99[^|]|%199[^|]|%999[^|]|%49[^\n]",
+               email.sender, email.receiver, email.subject, email.body, email.folder);
+
+        if (strcmp(email.folder, folder) == 0 && strcmp(email.receiver, username) == 0) {
+            count++;
+        }
+    }
+
+    fclose(file);
+    pthread_mutex_unlock(&file_mutex);
 
     return count;
 }
