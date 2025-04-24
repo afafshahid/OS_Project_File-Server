@@ -9,9 +9,10 @@
 #include "auth.h"
 #include "email.h"
 
-
 #define PORT 2727
 #define SERVER_IP "127.0.0.1"
+
+char username[50];
 
 void send_emails(int sock) 
 {
@@ -41,43 +42,68 @@ void send_emails(int sock)
     printf("Server: %s\n", response);
 }
 
-void fetch_inbox(int sock) 
-{
-    // Send fetch command
-    if (write(sock, "FETCH_INBOX", 11) < 0) {
-        perror("Failed to send fetch command");
-        return;
-    }
+void fetch_inbox(int sock) {
+    int current_page = 0;
+    int total_pages = 0;
 
-    // Get count of emails
-    int count;
-    if (read(sock, &count, sizeof(int)) != sizeof(int)) {
-        perror("Failed to read email count");
-        return;
-    }
+    while (1) {
+        char fetch_command[20];
+        sprintf(fetch_command, "FETCH_INBOX %d", current_page);
 
-    if (count == 0) {
-        printf("\nYour inbox is empty.\n");
-        return;
-    }
-
-    printf("\n--- Your Inbox (%d emails) ---\n", count);
-    
-    // Receive and display each email
-    for (int i = 0; i < count; i++) {
-        Email email;
-        ssize_t bytes_read = read(sock, &email, sizeof(Email));
-        
-        if (bytes_read != sizeof(Email)) {
-            printf("Error: Incomplete email received\n");
-            break;
+        // Send fetch command with page number
+        if (write(sock, fetch_command, strlen(fetch_command)) < 0) {
+            perror("Failed to send fetch command");
+            return;
         }
 
-        printf("\nEmail %d:\n", i+1);
-        printf("From: %s\n", email.sender);
-        printf("Subject: %s\n", email.subject);
-        printf("Body: %s\n", email.body);
-        printf("----------------------------");
+        // Get count of emails and pagination info
+        int count, page, total;
+        if (read(sock, &count, sizeof(int)) != sizeof(int) ||
+            read(sock, &page, sizeof(int)) != sizeof(int) ||
+            read(sock, &total_pages, sizeof(int)) != sizeof(int)) {
+            perror("Failed to read email count or pagination info");
+            return;
+        }
+
+        if (count == 0) {
+            if (current_page == 0) {
+                printf("\nYour inbox is empty.\n");
+            } else {
+                printf("\nNo more emails on this page.\n");
+            }
+        } else {
+            printf("\n--- Your Inbox (Page %d of %d, showing %d emails) ---\n",
+                   current_page + 1, total_pages, count);
+
+            // Receive and display each email
+            for (int i = 0; i < count; i++) {
+                Email email;
+                ssize_t bytes_read = read(sock, &email, sizeof(Email));
+
+                if (bytes_read != sizeof(Email)) {
+                    printf("Error: Incomplete email received\n");
+                    break;
+                }
+
+                printf("\nEmail %d:\n", (current_page * 4) + i + 1);
+                printf("From: %s\n", email.sender);
+                printf("Subject: %s\n", email.subject);
+                printf("Body: %s\n", email.body);
+                printf("----------------------------");
+            }
+        }
+
+        printf("\n\nOptions: [n]ext page, [p]revious page, [q]uit viewing: ");
+        char choice;
+        scanf(" %c", &choice);
+
+        if (choice == 'n' && current_page < total_pages - 1) {
+            current_page++;
+        } else if (choice == 'p' && current_page > 0) {
+            current_page--;
+        } else if (choice == 'q') {
+            break;
+        }
     }
 }
 
@@ -86,7 +112,7 @@ int main()
     int client_fd;
     struct sockaddr_in server_addr;
     char buffer[1024] = {0};
-    char username[50], password[50];
+    char password[50];
     int option;
 
     // 1. Create socket
