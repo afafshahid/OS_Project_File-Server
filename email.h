@@ -4,8 +4,8 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-// Email structure to hold individual email data
-typedef struct {
+typedef struct 
+{
     char sender[100];
     char receiver[100];
     char subject[200];
@@ -13,26 +13,25 @@ typedef struct {
     char folder[50];
 } Email;
 
-typedef struct EmailNode {
+typedef struct EmailNode 
+{
     Email email;
     struct EmailNode *next;
 } EmailNode;
 
-typedef struct {
+typedef struct 
+{
     EmailNode *front;
     EmailNode *rear;
-    
-    // Added synchronization primitives
-    pthread_mutex_t queue_mutex;  // Protects queue operations
-    sem_t queue_sem;             // Tracks items in queue
+    pthread_mutex_t queue_mutex; 
+    sem_t queue_sem;             
 } EmailQueue;
 
-// Added file operation synchronization
 extern pthread_mutex_t file_mutex;
 
-// Original functions remain unchanged
 void send_email(Email email);
-int fetch_emails(const char *folder, Email *emails, const char *username);
+int fetch_emails(const char *folder, Email *emails, const char *username, int page, int emails_per_page);
+int get_total_email_count(const char *folder, const char *username);
 void init_queue(EmailQueue *queue);
 void enqueue(EmailQueue *queue, Email email);
 int dequeue(EmailQueue *queue, Email *email);
