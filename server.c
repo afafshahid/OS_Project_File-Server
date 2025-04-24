@@ -21,7 +21,8 @@
 pthread_mutex_t client_mutex = PTHREAD_MUTEX_INITIALIZER;
 mqd_t mail_queue;
 
-void initialize_message_queue() {
+void initialize_message_queue() 
+{
     struct mq_attr attr = {
         .mq_flags = 0,
         .mq_maxmsg = MAX_QUEUE_SIZE,
@@ -37,7 +38,8 @@ void initialize_message_queue() {
     }
 }
 
-void *handle_client(void *arg) {
+void *handle_client(void *arg) 
+{
     int client_socket = *(int *)arg;
     free(arg);
     char buffer[1024] = {0};
@@ -86,30 +88,31 @@ void *handle_client(void *arg) {
             }
             pthread_mutex_unlock(&client_mutex);
         }
-        else if (strncmp(buffer, "FETCH_INBOX", 11) == 0) {
-            Email emails[MAX_EMAILS];
-            int count = fetch_emails("Inbox", emails, username);
-
-            // Filter emails for this user
-            Email user_emails[MAX_EMAILS];
-            int user_count = 0;
-            for (int i = 0; i < count && user_count < MAX_EMAILS; i++) {
-                if (strcmp(emails[i].receiver, username) == 0) {
-                    user_emails[user_count++] = emails[i];
-                }
+        else if(strncmp(buffer, "FETCH_INBOX", 11) == 0) {
+            // Extract page number from the request (default to 0)
+            int page = 0;
+            if (strlen(buffer) > 12) {
+                sscanf(buffer + 12, "%d", &page);
             }
 
-            // Send response
-            if (write(client_socket, &user_count, sizeof(int)) < 0) {
-                perror("Count send failed");
-                continue;
-            }
-
-            for (int i = 0; i < user_count; i++) {
-                if (write(client_socket, &user_emails[i], sizeof(Email)) < 0) {
-                    perror("Email send failed");
-                    break;
-                }
+            // Define emails per page
+            const int EMAILS_PER_PAGE = 4;
+    
+            Email emails[EMAILS_PER_PAGE];
+            int count = fetch_emails("Inbox", emails, username, page, EMAILS_PER_PAGE);
+    
+            // Get total count for pagination info
+            int total_count = get_total_email_count("Inbox", username);
+            int total_pages = (total_count + EMAILS_PER_PAGE - 1) / EMAILS_PER_PAGE;
+    
+            // Send pagination info
+            write(client_socket, &count, sizeof(int));
+            write(client_socket, &page, sizeof(int));
+            write(client_socket, &total_pages, sizeof(int));
+    
+            // Send emails for this page
+            for (int i = 0; i < count; i++) {
+                write(client_socket, &emails[i], sizeof(Email));
             }
         }
         else if (strncmp(buffer, "exit", 4) == 0) {
