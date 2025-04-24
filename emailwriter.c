@@ -5,14 +5,20 @@
 #include <sys/stat.h>
 #include <mqueue.h>
 #include <unistd.h>
+#include <errno.h>
+#include <pthread.h>
 #include "email.h"
 
 #define QUEUE_NAME "/mail_queue"
 #define MAX_RETRIES 3
 #define RETRY_DELAY 2  // seconds
 
-// Global synchronization
-extern pthread_mutex_t file_mutex;
+// Global synchronization (declare as extern in header)
+pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void init_sync_primitives() {
+    // Initialization if needed
+}
 
 void process_queue() {
     mqd_t mq;
@@ -20,30 +26,32 @@ void process_queue() {
     Email email;
     unsigned int prio;
     
-    // Open existing queue
-    mq = mq_open(QUEUE_NAME, O_RDONLY);
+    // Open queue in blocking mode
+    mq = mq_open(QUEUE_NAME, O_RDONLY | O_CREAT, 0644, NULL);
     if (mq == -1) {
         perror("mq_open failed in writer");
         exit(EXIT_FAILURE);
     }
 
     // Get queue attributes
-    mq_getattr(mq, &attr);
-    printf("Writer started. Queue contains %ld messages\n", attr.mq_curmsgs);
+    if (mq_getattr(mq, &attr) == -1) {
+        perror("mq_getattr failed");
+        mq_close(mq);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Writer started. Waiting for messages (PID: %d)...\n", getpid());
 
     while (1) {
-        // Receive with timeout (5 seconds)
-        struct timespec timeout = { .tv_sec = 5, .tv_nsec = 0 };
-        ssize_t bytes = mq_timedreceive(mq, (char*)&email, attr.mq_msgsize, &prio, &timeout);
+        // BLOCKING receive (no timeout)
+        ssize_t bytes = mq_receive(mq, (char*)&email, attr.mq_msgsize, &prio);
         
         if (bytes == -1) {
-            if (errno == ETIMEDOUT) {
-                // Timeout is normal - just loop again
-                continue;
-            }
             perror("mq_receive failed");
-            break;
+            break;  // Exit on serious error
         }
+
+        printf("Processing email from %s to %s...\n", email.sender, email.receiver);
 
         // Process email with retries
         int retry = 0;
@@ -67,8 +75,8 @@ void process_queue() {
             fclose(file);
             pthread_mutex_unlock(&file_mutex);
             
-            printf("Stored email from %s to %s\n", email.sender, email.receiver);
-            break;  // Success
+            printf("Successfully stored email\n");
+            break;
         }
 
         if (retry == MAX_RETRIES) {
@@ -80,13 +88,11 @@ void process_queue() {
 }
 
 int main() {
-    // Initialize sync primitives (defined in email.c)
     init_sync_primitives();
     
-    // Daemonize (optional)
-    if (fork() != 0) return 0;  // Parent exits
+    // Remove daemonization for now (for debugging)
+    // if (fork() != 0) return 0;
     
-    // Process messages forever
     process_queue();
     return 0;
 }
