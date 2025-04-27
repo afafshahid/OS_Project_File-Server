@@ -13,14 +13,8 @@
 #define MAX_RETRIES 3
 #define RETRY_DELAY 2  // seconds
 
-// Global synchronization (declare as extern in header)
-pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-void init_sync_primitives() {
-    // Initialization if needed
-}
-
-void process_queue() {
+void process_queue() 
+{
     mqd_t mq;
     struct mq_attr attr;
     Email email;
@@ -87,12 +81,8 @@ void process_queue() {
     mq_close(mq);
 }
 
-int main() {
-    init_sync_primitives();
-    
-    // Remove daemonization for now (for debugging)
-    // if (fork() != 0) return 0;
-    
+int main() 
+{
     process_queue();
     return 0;
 }
