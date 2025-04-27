@@ -87,6 +87,8 @@ void *handle_client(void *arg)
                 write(client_socket, "EMAIL_QUEUED", 12);
             }
             pthread_mutex_unlock(&client_mutex);
+
+            sleep(1);
         }
         else if(strncmp(buffer, "FETCH_INBOX", 11) == 0) {
             // Extract page number from the request (default to 0)
@@ -114,6 +116,9 @@ void *handle_client(void *arg)
             for (int i = 0; i < count; i++) {
                 write(client_socket, &emails[i], sizeof(Email));
             }
+
+            sleep(1);
+            
         }
         else if (strncmp(buffer, "exit", 4) == 0) {
             printf("%s requested disconnection\n", username);
